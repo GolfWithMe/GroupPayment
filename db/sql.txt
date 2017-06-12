@@ -1,0 +1,52 @@
+--
+-- Table structure for table `akzwy_community_groups_membership`
+--
+
+DROP TABLE IF EXISTS `akzwy_community_groups_membership`;
+CREATE TABLE IF NOT EXISTS `akzwy_community_groups_membership` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `groupid` int(11) NOT NULL,
+  `userid` int(11) NOT NULL,
+  `amount` float(8,2) NOT NULL,
+  `paytype` varchar(150) NOT NULL,
+  `email` varchar(150) NOT NULL,
+  `payerId` varchar(150) NOT NULL,
+  `transactionId` varchar(150) NOT NULL,
+  `transactionType` varchar(150) NOT NULL,
+  `orderTime` varchar(150) NOT NULL,
+  `adddate` date NOT NULL,
+  `expdate` date NOT NULL,
+  `expmonth` int(3) NOT NULL,
+  `autorenewal` int(2) NOT NULL,
+  `adate` date NOT NULL,
+  `status` int(2) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 AUTO_INCREMENT=1 ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `akzwy_community_groups_paymentsetting`
+--
+
+DROP TABLE IF EXISTS `akzwy_community_groups_paymentsetting`;
+CREATE TABLE IF NOT EXISTS `akzwy_community_groups_paymentsetting` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `memname` varchar(150) NOT NULL,
+  `amount` float(8,2) NOT NULL,
+  `memmonth` int(3) NOT NULL,
+  `paymode` varchar(100) NOT NULL,
+  `payname` varchar(100) NOT NULL,
+  `apiuser` varchar(200) NOT NULL,
+  `apipassword` varchar(200) NOT NULL,
+  `apisignature` varchar(200) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB  DEFAULT CHARSET=latin1 AUTO_INCREMENT=2 ;
+
+--
+-- Dumping data for table `akzwy_community_groups_paymentsetting`
+--
+
+INSERT INTO `akzwy_community_groups_paymentsetting` (`id`, `memname`, `amount`, `memmonth`, `paymode`, `payname`, `apiuser`, `apipassword`, `apisignature`) VALUES
+(1, 'Join Membership', 20.00, 12, 'Test', 'PayPal', '', '', '');
+
