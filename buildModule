@@ -1,0 +1,10 @@
+cp /usr/share/nginx/html/components/com_community/models/groups.php membership/components/com_community/models
+cp /usr/share/nginx/html/components/com_community/models/groups_old.php membership/components/com_community/models
+cp -r /usr/share/nginx/html/components/com_community/views/groups membership/components/com_community/views
+cp -r /usr/share/nginx/html/components/com_community/templates/jomsocial/layouts/groups membership/components/com_community/templates/jomsocial/layouts
+cp /usr/share/nginx/html/administrator/components/com_community/tables/groupmemberships.php membership/administrator/components/com_community/tables
+cp -r /usr/share/nginx/html/administrator/components/com_community/views/groupmemberships membership/administrator/components/com_community/views
+cp /usr/share/nginx/html/administrator/components/com_community/models/groupmemberships.php membership/administrator/components/com_community/models
+cp /usr/share/nginx/html/administrator/components/com_community/controllers/groupmemberships.php membership/administrator/components/com_community/controllers
+zip -r joomla_gwm_membership membership
+

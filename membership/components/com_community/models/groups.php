@@ -1,5 +1,6 @@
 <?php
 /**
+ * //GWMFile
 * @copyright (C) 2013 iJoomla, Inc. - All rights reserved.
 * @license GNU General Public License, version 2 (http://www.gnu.org/licenses/gpl-2.0.html)
 * @author iJoomla.com <webmaster@ijoomla.com>
@@ -2258,144 +2259,165 @@ implements CLimitsInterface, CNotificationsInterface
     }
 
     public function getTotalNotifications( $user )
+    {
+            if($user->_cparams->get('notif_groups_invite'))
+            {
+                    $privateGroupRequestCount=0;
+
+                    if($user->_cparams->get('notif_groups_member_join'))
+                    {
+                    $allGroups      =   $this->getAdminGroups( $user->id , COMMUNITY_PRIVATE_GROUP);
+
+                    foreach($allGroups as $groups)
+                    {
+                        $member     =    $this->getMembers( $groups->id , 0, false );
+
+                        if(!empty($member))
+                        {
+                           $privateGroupRequestCount += count($member);
+                        }
+                    }
+                }
+
+                    return (int) $this->countPending( $user->id ) + $privateGroupRequestCount;
+            }
+
+            return 0;
+    }
+
+    public function getAdminGroups( $userId, $privacy = NULL )
+    {
+            $extraSQL = NULL;
+            $db		= $this->getDBO();
+
+            if( $privacy == COMMUNITY_PRIVATE_GROUP )
+            {
+                    $extraSQL = ' AND a.'.$db->quoteName('approvals').'=' . $db->Quote( '1' );
+            }
+
+            if( $privacy == COMMUNITY_PUBLIC_GROUP )
+            {
+                    $extraSQL = ' AND a.'.$db->quoteName('approvals').'=' . $db->Quote( '0' );
+            }
+            $query	=   'SELECT a.* FROM '
+                                            . $db->quoteName('#__community_groups') . ' AS a '
+                                            . ' INNER JOIN ' . $db->quoteName('#__community_groups_members') . ' AS b '
+                                            . ' ON a.'.$db->quoteName('id').'=b.'.$db->quoteName('groupid')
+                                            . ' AND b.'.$db->quoteName('approved').'=' . $db->Quote( '1' )
+                                            . ' AND b.'.$db->quoteName('permissions').'=' . $db->Quote( '1' )
+                                            . ' AND a.'.$db->quoteName('published').'=' . $db->Quote( '1' )
+                                            . ' AND b.'.$db->quoteName('memberid').'=' . $db->Quote($userId)
+                                            . $extraSQL;
+
+            $db->setQuery( $query );
+    try {
+        $result = $db->loadObjectList();
+    } catch (Exception $e) {
+        JFactory::getApplication()->enqueueMessage($e->getMessage(), 'error');
+    }
+
+            // bind to table
+            $data = array();
+            foreach($result as $row){
+                    $groupAdmin	= JTable::getInstance( 'Group' , 'CTable' );
+                    $groupAdmin->bind( $row );
+                    $data[] = $groupAdmin;
+            }
+
+            return $data;
+    }
+
+    //new section
+    
+    public function getMyGroups( $userId )
 	{
-		if($user->_cparams->get('notif_groups_invite'))
-		{
-			$privateGroupRequestCount=0;
+        // guest is not a member of any group
+        if($userId == 0)
+                return false;
 
-			if($user->_cparams->get('notif_groups_member_join'))
-			{
-		        $allGroups      =   $this->getAdminGroups( $user->id , COMMUNITY_PRIVATE_GROUP);
+        $db		= $this->getDBO();
 
-		        foreach($allGroups as $groups)
-		        {
-		            $member     =    $this->getMembers( $groups->id , 0, false );
+        $query	= 'SELECT * FROM ' . $db->quoteName( '#__community_groups' ) . ' '
+                        . 'WHERE ' . $db->quoteName( 'ownerid' ) . '=' . $db->Quote( $userId );
+        $db->setQuery( $query );
 
-		            if(!empty($member))
-		            {
-		               $privateGroupRequestCount += count($member);
-		            }
-		        }
-		    }
-
-			return (int) $this->countPending( $user->id ) + $privateGroupRequestCount;
-		}
-
-		return 0;
-	}
-
-	public function getAdminGroups( $userId, $privacy = NULL )
-	{
-		$extraSQL = NULL;
-		$db		= $this->getDBO();
-
-		if( $privacy == COMMUNITY_PRIVATE_GROUP )
-		{
-			$extraSQL = ' AND a.'.$db->quoteName('approvals').'=' . $db->Quote( '1' );
-		}
-
-		if( $privacy == COMMUNITY_PUBLIC_GROUP )
-		{
-			$extraSQL = ' AND a.'.$db->quoteName('approvals').'=' . $db->Quote( '0' );
-		}
-		$query	=   'SELECT a.* FROM '
-						. $db->quoteName('#__community_groups') . ' AS a '
-						. ' INNER JOIN ' . $db->quoteName('#__community_groups_members') . ' AS b '
-						. ' ON a.'.$db->quoteName('id').'=b.'.$db->quoteName('groupid')
-						. ' AND b.'.$db->quoteName('approved').'=' . $db->Quote( '1' )
-						. ' AND b.'.$db->quoteName('permissions').'=' . $db->Quote( '1' )
-						. ' AND a.'.$db->quoteName('published').'=' . $db->Quote( '1' )
-						. ' AND b.'.$db->quoteName('memberid').'=' . $db->Quote($userId)
-						. $extraSQL;
-
-		$db->setQuery( $query );
         try {
             $result = $db->loadObjectList();
         } catch (Exception $e) {
             JFactory::getApplication()->enqueueMessage($e->getMessage(), 'error');
         }
 
-		// bind to table
-		$data = array();
-		foreach($result as $row){
-			$groupAdmin	= JTable::getInstance( 'Group' , 'CTable' );
-			$groupAdmin->bind( $row );
-			$data[] = $groupAdmin;
-		}
-
-		return $data;
+        return $result;
 	}
+        
+    public function getGroupMembership($userid)
+    {
+            $db		= $this->getDBO();
+
+
+            $query	= 'SELECT a.* FROM '
+                            . $db->quoteName('#__community_groups_membership') . ' AS a '
+                            . ' WHERE a.'.$db->quoteName('userid').'=' . $db->Quote( $userid );
+
+            $db->setQuery( $query );
+            try {
+                    $result = $db->loadObjectList();
+            } catch (Exception $e) {
+                    JFactory::getApplication()->enqueueMessage($e->getMessage(), 'error');
+            }
+
+            return $result;
+
+    }
+
+    public function getGroupdata($gid)
+    {
+            $mainframe	= JFactory::getApplication();
+    $jinput = $mainframe->input;
+
+            $db			= JFactory::getDBO();
+
+            $querySql	= 'SELECT a.* FROM '
+                        . $db->quoteName( '#__community_groups' ) . ' AS a '
+                        . 'WHERE '. $db->quoteName('id').' = '.$db->Quote($gid);
+
+            $db->setQuery( $querySql );
+            $result = $db->loadObject();
+
+
+            return $result;
+    }
+
+    public function getMembershipPayment()
+    {
+            $db		= $this->getDBO();
+
+
+            $query	= 'SELECT a.* FROM '
+                            . $db->quoteName('#__community_groups_paymentsetting') . ' AS a '
+                            . ' Limit 1';
+
+            $db->setQuery( $query );
+            try {
+                    $result = $db->loadObject();
+            } catch (Exception $e) {
+                    JFactory::getApplication()->enqueueMessage($e->getMessage(), 'error');
+            }
+
+            return $result;
+
+    }
 	
-	//new section
-	public function getGroupMembership($userid)
-	{
-		$db		= $this->getDBO();
-		
-
-		$query	= 'SELECT a.* FROM '
-				. $db->quoteName('#__community_groups_membership') . ' AS a '
-				. ' WHERE a.'.$db->quoteName('userid').'=' . $db->Quote( $userid );
-
-		$db->setQuery( $query );
-		try {
-			$result = $db->loadObjectList();
-		} catch (Exception $e) {
-			JFactory::getApplication()->enqueueMessage($e->getMessage(), 'error');
-		}
-		
-		return $result;
-
-	}
-	
-	public function getGroupdata($gid)
-	{
-		$mainframe	= JFactory::getApplication();
-        $jinput = $mainframe->input;
-		
-		$db			= JFactory::getDBO();
-		
-
-		$querySql	= 'SELECT a.* FROM '
-					. $db->quoteName( '#__community_groups' ) . ' AS a '
-					. 'WHERE '. $db->quoteName('id').' = '.$db->Quote($gid);
-
-		$db->setQuery( $querySql );
-		$result = $db->loadObject();
-		
-		
-		return $result;
-	}
-	
-	public function getMembershipPayment()
-	{
-		$db		= $this->getDBO();
-		
-
-		$query	= 'SELECT a.* FROM '
-				. $db->quoteName('#__community_groups_paymentsetting') . ' AS a '
-				. ' Limit 1';
-
-		$db->setQuery( $query );
-		try {
-			$result = $db->loadObject();
-		} catch (Exception $e) {
-			JFactory::getApplication()->enqueueMessage($e->getMessage(), 'error');
-		}
-		
-		return $result;
-
-	}
-	
-	public function addGroupMembership($groupid, $userid, $resArray, $membership)
+    public function addGroupMembership($groupid, $userid, $resArray, $membership)
     {
         $india = time(); // + (10*60*60)+(35*60);
-		$today=date("Y-n-j",$india);
-		$jd=explode('-',$today);
-		$joining_date=$jd[2].'-'.$jd[1].'-'.$jd[0];
-		$memmonth=$membership->memmonth;
-		$expmonth=date("Y-m-d", mktime(0, 0, 0, date("$jd[1]")+$memmonth, date("$jd[2]"), date("$jd[0]")));
-			
-		$my = CFactory::getUser();
+        $today=date("Y-n-j",$india);
+        $jd=explode('-',$today);
+        $joining_date=$jd[2].'-'.$jd[1].'-'.$jd[0];
+        $memmonth=$membership->memmonth;
+        $expmonth=date("Y-m-d", mktime(0, 0, 0, date("$jd[1]")+$memmonth, date("$jd[2]"), date("$jd[0]")));
+
+        $my = CFactory::getUser();
         $db= $this->getDBO();
 
         //if ($my->id == $id)
@@ -2408,21 +2430,21 @@ implements CLimitsInterface, CNotificationsInterface
             .' SET ' . $db->quoteName('groupid').' = '.$db->Quote($groupid)
             . ', '. $db->quoteName('userid').' = '.$db->Quote($userid)
             . ', '. $db->quoteName('amount').' = '. $db->Quote($resArray["AMT"])
-			. ', '. $db->quoteName('paytype').' = '. $db->Quote($resArray["PAYMENTTYPE"])
-			. ', '. $db->quoteName('email').' = '. $db->Quote($resArray['EMAIL'])
-			. ', '. $db->quoteName('payerId').' = '. $db->Quote($resArray["PAYMENTSTATUS"])
-			. ', '. $db->quoteName('transactionId').' = '. $db->Quote($resArray["TRANSACTIONID"])
-			. ', '. $db->quoteName('transactionType').' = '. $db->Quote($resArray["TRANSACTIONTYPE"])
-			. ', '. $db->quoteName('orderTime').' = '. $db->Quote($resArray["ORDERTIME"])
-			. ', '. $db->quoteName('adddate').' = '. $db->Quote($today)
-			. ', '. $db->quoteName('expdate').' = '. $db->Quote($expmonth)
-			. ', '. $db->quoteName('expmonth').' = '. $db->Quote($memmonth)
+            . ', '. $db->quoteName('paytype').' = '. $db->Quote($resArray["PAYMENTTYPE"])
+            . ', '. $db->quoteName('email').' = '. $db->Quote($resArray['EMAIL'])
+            . ', '. $db->quoteName('payerId').' = '. $db->Quote($resArray["PAYMENTSTATUS"])
+            . ', '. $db->quoteName('transactionId').' = '. $db->Quote($resArray["TRANSACTIONID"])
+            . ', '. $db->quoteName('transactionType').' = '. $db->Quote($resArray["TRANSACTIONTYPE"])
+            . ', '. $db->quoteName('orderTime').' = '. $db->Quote($resArray["ORDERTIME"])
+            . ', '. $db->quoteName('adddate').' = '. $db->Quote($today)
+            . ', '. $db->quoteName('expdate').' = '. $db->Quote($expmonth)
+            . ', '. $db->quoteName('expmonth').' = '. $db->Quote($memmonth)
             //. ', '. $db->quoteName('adate').' = ' . $db->Quote($date->toSql())
-			. ', '. $db->quoteName('adate').' = ' . $db->Quote($today)
-			. ', '. $db->quoteName('status').' = '. $db->Quote(1);
+            . ', '. $db->quoteName('adate').' = ' . $db->Quote($today)
+            . ', '. $db->quoteName('status').' = '. $db->Quote(1);
 		
-		//echo $query;
-		//die();
+        //echo $query;
+        //die();
 		
         $db->setQuery($query);
         try {

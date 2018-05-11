@@ -1576,9 +1576,9 @@ if (!class_exists("CommunityViewGroups")) {
             }
 			
 			if($_REQUEST['create']=="succ") 
-				$mainframe->enqueueMessage('Thank you for your payment. Join Group Successfully.', 'success');
+				$mainframe->enqueueMessage('Thank you for your payment. You have succdssfully joined the group.', 'success');
 			if($_REQUEST['create']=="succfree") 
-				$mainframe->enqueueMessage('Join Group Successfully.', 'success');
+				$mainframe->enqueueMessage('Group Joined Successfully.', 'success');
 
             $tmpl = new CTemplate();
             echo $tmpl->set('groupsHTML', $groupsHTML)
@@ -1648,7 +1648,7 @@ if (!class_exists("CommunityViewGroups")) {
                     ->fetch('groups.myinvites');
         }
 		
-		public function mymembership() {
+	public function mymembership() {
             $mainframe = JFactory::getApplication();
             $jinput = $mainframe->input;
             $userId = $jinput->get('userid', '', 'INT');
@@ -1674,285 +1674,304 @@ if (!class_exists("CommunityViewGroups")) {
                     ->fetch('groups.mymembership');
         }
 		
-		public function joinmembership() {
+	public function joinmembership() {
             $mainframe = JFactory::getApplication();
             $jinput = $mainframe->input;
-			$config = CFactory::getConfig();
+            $config = CFactory::getConfig();
             // Load required filterbar library that will be used to display the filtering and sorting.
             $document = JFactory::getDocument();
 			
-			CHeadHelper::setType('website', 'Join Group');
+            CHeadHelper::setType('website', 'Join Group');
 			
-			//fields
-			$postfields = $jinput->request->getArray();
+            //fields
+            $postfields = $jinput->request->getArray();
 
             $my = CFactory::getUser();
             $model = CFactory::getModel('groups');
+            $coursesModel = CFactory::getModel('courses');
+            $profileModel = CFactory::getModel('profile');
 			
-			$groupId = $postfields['groupid'];
+            $groupId = $postfields['groupid'];
             $groups = array();
-			$ids = '';
+            $ids = '';
 			
-			if($groupId) {
-				$table = JTable::getInstance('Group', 'CTable');
-				$table->load($groupId);
-				$table->description = CStringHelper::clean(JHTML::_('string.truncate', $table->description, $config->get('tips_desc_length')));
-				$groups[] = $table;
-				$ids = (empty($ids)) ? $table->id : $ids . ',' . $table->id;
-			}
-			
-			$membership = $model->getMembershipPayment();
-			
-			/*
-			$resArray["AMT"]="20.00";
-			$resArray["PAYMENTTYPE"]="instant";
-			$resArray["EMAIL"]="";
-			$resArray["PAYMENTSTATUS"]="Completed";
-			$resArray["TRANSACTIONID"]="0GK51219WJ2403155";
-			$resArray["TRANSACTIONTYPE"]="expresscheckout";
-			$resArray["ORDERTIME"]="2017-06-01T09:49:09";
+            if($groupId) {
+                    $table = JTable::getInstance('Group', 'CTable');
+                    $table->load($groupId);
+                    $table->description = CStringHelper::clean(JHTML::_('string.truncate', $table->description, $config->get('tips_desc_length')));
+                    $groups[] = $table;
+                    $ids = (empty($ids)) ? $table->id : $ids . ',' . $table->id;
+            }
 
-			$savedate = $model->addGroupMembership($groups[0]->id, $my->id, $resArray, $membership);
-			*/
-            //print_r($postfields);
-			//die();
-			$join=0;
-			$step=$postfields['selstep'];
-			if($step=="payment") {
+            $membership = $model->getMembershipPayment();
+            $homecourse = $profileModel->getHomeGolf($my->id);
+            //print_r($homecourse);
+            $userCourse = $coursesModel->getCourseDetails($homecourse[0]->CourseID);
+
+            $join=0;
+            $step=$postfields['selstep'];
+            
+            if ($userCourse->HomeGroup == $groupId) {
+                    $membership->amount = 0;
+                    $membership->payname = "Free";
+            }
+            
+            if($step=="payment") {
+                //get home course id
+                //lookup the home group for the course
+                //if the home course home group is this group then it is free
+                if ($userCourse->HomeGroup == $groupId || $membership->amount == 0) {
+                    $membership->amount = 0;
+                    $membership->payname = "Free";
+                    $resArray["AMT"] = "0";
+                    $resArray["PAYMENTTYPE"] = "Free";
+                    $resArray["EMAIL"] = "Free";
+                    $resArray["PAYMENTSTATUS"] = "Free";
+                    $resArray["TRANSACTIONID"] = "Free";
+                    $resArray["TRANSACTIONTYPE"] = "Free";
+                    $resArray["ORDERTIME"] = date("Y-m-d H:i:s");
+                    $savedate = $model->addJoinGroup($groups[0]->id, $my->id);
+                    $savedate = $model->addGroupMembership($groups[0]->id, $my->id, $resArray, $membership);
+                    $mainframe->enqueueMessage('You have successfully joined your home group', 'success');
+
+                    $succURL = JURI::root() . 'index.php?option=com_community&view=groups&task=mygroups&create=succfree&userid=' . $my->id;
+                    header("Location: ".$succURL);
+                } else {
 				
-				$_SESSION["Payment_Amount"] = $membership->amount;
-				$paymentAmount = $membership->amount;
-				$currencyCodeType = "USD";
-				$paymentType = "Sale";
-				//$returnURL = JURI::root() . 'index.php?option=com_community&view=groups&task=joinmembership&selstep=paysucc&groupid=' . $groupId;
-				//$cancelURL = JURI::root() . 'index.php?option=com_community&view=groups&task=joinmembership&selstep=paycancel&groupid=' . $groupId;
-				$returnURL = JURI::root() . 'index.php?groupid=' . $groupId;
-				$cancelURL = JURI::root() . 'index.php?groupid=' . $groupId;
-				
-				$resArray = $this->CallShortcutExpressCheckout ($paymentAmount, $currencyCodeType, $paymentType, $returnURL, $cancelURL, $membership);
-				
-				$ack = strtoupper($resArray["ACK"]);
-				if($ack=="SUCCESS" || $ack=="SUCCESSWITHWARNING")
-				{
-					$this->RedirectToPayPal ( $resArray["TOKEN"] );
-				} 
-				else  
-				{
-					//Display a user friendly Error on the page using any of the following error information returned by PayPal
-					$ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
-					$ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
-					$ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
-					$ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
-				
-					echo "SetExpressCheckout API call failed. ";
-					echo "Detailed Error Message: " . $ErrorLongMsg;
-					echo "Short Error Message: " . $ErrorShortMsg;
-					echo "Error Code: " . $ErrorCode;
-					echo "Error Severity Code: " . $ErrorSeverityCode;
-					//die();
-				}
-				
-			} else if($step=="paysucc") {
-				
-				$token = "";
-				if (isset($postfields['token']))
-				{
-					$token = $postfields['token'];
-				}
-				
-				if ( $token != "" )
-				{
-					$resArray = $this->GetShippingDetails( $token, $membership);
-					$ack = strtoupper($resArray["ACK"]);
-					if( $ack == "SUCCESS" || $ack == "SUCESSWITHWARNING") 
-					{
-						/*
-						' The information that is returned by the GetExpressCheckoutDetails call should be integrated by the partner into his Order Review 
-						' page		
-						*/
-						$email 			= $resArray["EMAIL"]; // ' Email address of payer.
-						$payerId 			= $resArray["PAYERID"]; // ' Unique PayPal customer account identification number.
-						$payerStatus		= $resArray["PAYERSTATUS"]; // ' Status of payer. Character length and limitations: 10 single-byte alphabetic characters.
-						$salutation			= $resArray["SALUTATION"]; // ' Payer's salutation.
-						$firstName			= $resArray["FIRSTNAME"]; // ' Payer's first name.
-						$middleName			= $resArray["MIDDLENAME"]; // ' Payer's middle name.
-						$lastName			= $resArray["LASTNAME"]; // ' Payer's last name.
-						$suffix				= $resArray["SUFFIX"]; // ' Payer's suffix.
-						$cntryCode			= $resArray["COUNTRYCODE"]; // ' Payer's country of residence in the form of ISO standard 3166 two-character country codes.
-						$business			= $resArray["BUSINESS"]; // ' Payer's business name.
-						$shipToName			= $resArray["SHIPTONAME"]; // ' Person's name associated with this address.
-						$shipToStreet		= $resArray["SHIPTOSTREET"]; // ' First street address.
-						$shipToStreet2		= $resArray["SHIPTOSTREET2"]; // ' Second street address.
-						$shipToCity			= $resArray["SHIPTOCITY"]; // ' Name of city.
-						$shipToState		= $resArray["SHIPTOSTATE"]; // ' State or province
-						$shipToCntryCode	= $resArray["SHIPTOCOUNTRYCODE"]; // ' Country code. 
-						$shipToZip			= $resArray["SHIPTOZIP"]; // ' U.S. Zip code or other country-specific postal code.
-						$addressStatus 		= $resArray["ADDRESSSTATUS"]; // ' Status of street address on file with PayPal   
-						$invoiceNumber		= $resArray["INVNUM"]; // ' Your own invoice or tracking number, as set by you in the element of the same name in SetExpressCheckout request .
-						$phonNumber			= $resArray["PHONENUM"]; // ' Payer's contact telephone number. Note:  PayPal returns a contact telephone number only if your Merchant account profile settings require that the buyer enter one. 
-						
-						//Confirm Recurring
-						$PaymentOption = "PayPal";
-						if ( $PaymentOption == "PayPal" )
-						{
-							/*
-							'------------------------------------
-							' The paymentAmount is the total value of 
-							' the shopping cart, that was set 
-							' earlier in a session variable 
-							' by the shopping cart page
-							'------------------------------------
-							*/
-							
-							$finalPaymentAmount =  $_SESSION["Payment_Amount"];
-							
-							$resArray = $this->CreateRecurringPaymentsProfile($membership,$groups[0]->id);
-							
-							if( $ack == "SUCCESS" || $ack == "SUCCESSWITHWARNING" )
-							{
-								/*
-								'------------------------------------
-								' Calls the DoExpressCheckoutPayment API call
-								'
-								' The ConfirmPayment function is defined in the file PayPalFunctions.jsp,
-								' that is included at the top of this file.
-								'-------------------------------------------------
-								*/
-								$resArray = $this->ConfirmPayment ( $finalPaymentAmount, $membership ); //Remove comment with ontime payment.
-	
-								$ack = strtoupper($resArray["ACK"]);
-								
-								if( $ack == "SUCCESS" || $ack == "SUCCESSWITHWARNING" )
-								{
-									/*
-									'********************************************************************************************************************
-									'
-									' THE PARTNER SHOULD SAVE THE KEY TRANSACTION RELATED INFORMATION LIKE 
-									'                    transactionId & orderTime 
-									'  IN THEIR OWN  DATABASE
-									' AND THE REST OF THE INFORMATION CAN BE USED TO UNDERSTAND THE STATUS OF THE PAYMENT 
-									'
-									'********************************************************************************************************************
-									*/
-							
-									$transactionId		= $resArray["TRANSACTIONID"]; // ' Unique transaction ID of the payment. Note:  If the PaymentAction of the request was Authorization or Order, this value is your AuthorizationID for use with the Authorization & Capture APIs. 
-									$transactionType 	= $resArray["TRANSACTIONTYPE"]; //' The type of transaction Possible values: l  cart l  express-checkout 
-									$paymentType		= $resArray["PAYMENTTYPE"];  //' Indicates whether the payment is instant or delayed. Possible values: l  none l  echeck l  instant 
-									$orderTime 			= $resArray["ORDERTIME"];  //' Time/date stamp of payment
-									$amt				= $resArray["AMT"];  //' The final amount charged, including any shipping and taxes from your Merchant Profile.
-									$currencyCode		= $resArray["CURRENCYCODE"];  //' A three-character currency code for one of the currencies listed in PayPay-Supported Transactional Currencies. Default: USD. 
-									$feeAmt				= $resArray["FEEAMT"];  //' PayPal fee amount charged for the transaction
-									$settleAmt			= $resArray["SETTLEAMT"];  //' Amount deposited in your PayPal account after a currency conversion.
-									$taxAmt				= $resArray["TAXAMT"];  //' Tax charged on the transaction.
-									$exchangeRate		= $resArray["EXCHANGERATE"];  //' Exchange rate if a currency conversion occurred. Relevant only if your are billing in their non-primary currency. If the customer chooses to pay with a currency other than the non-primary currency, the conversion occurs in the customer's account.
-									
-									/*
-									' Status of the payment: 
-											'Completed: The payment has been completed, and the funds have been added successfully to your account balance.
-											'Pending: The payment is pending. See the PendingReason element for more information. 
-									*/
-									
-									$paymentStatus	= $resArray["PAYMENTSTATUS"]; 
-							
-									/*
-									'The reason the payment is pending:
-									'  none: No pending reason 
-									'  address: The payment is pending because your customer did not include a confirmed shipping address and your Payment Receiving Preferences is set such that you want to manually accept or deny each of these payments. To change your preference, go to the Preferences section of your Profile. 
-									'  echeck: The payment is pending because it was made by an eCheck that has not yet cleared. 
-									'  intl: The payment is pending because you hold a non-U.S. account and do not have a withdrawal mechanism. You must manually accept or deny this payment from your Account Overview. 		
-									'  multi-currency: You do not have a balance in the currency sent, and you do not have your Payment Receiving Preferences set to automatically convert and accept this payment. You must manually accept or deny this payment. 
-									'  verify: The payment is pending because you are not yet verified. You must verify your account before you can accept this payment. 
-									'  other: The payment is pending for a reason other than those listed above. For more information, contact PayPal customer service. 
-									*/
-									
-									$pendingReason	= $resArray["PENDINGREASON"];  
-							
-									/*
-									'The reason for a reversal if TransactionType is reversal:
-									'  none: No reason code 
-									'  chargeback: A reversal has occurred on this transaction due to a chargeback by your customer. 
-									'  guarantee: A reversal has occurred on this transaction due to your customer triggering a money-back guarantee. 
-									'  buyer-complaint: A reversal has occurred on this transaction due to a complaint about the transaction from your customer. 
-									'  refund: A reversal has occurred on this transaction because you have given the customer a refund. 
-									'  other: A reversal has occurred on this transaction due to a reason not listed above. 
-									*/
-									
-									$reasonCode		= $resArray["REASONCODE"]; 
-									
-									//echo "Thank you for your payment.";
-									//die();
-									//group join
-									$userId=$my->id;
-									$groupId=$groups[0]->id;
-									$savedate = $model->addJoinGroup($groupId, $userId);
-									//$this->PayGroupJoin( $groups[0] , $userId );
-									//payment Save
-									/*
-									echo $groups[0]->id;
-									echo '-<br>';
-									echo $my->id;
-									echo '-<br>';
-									print_r($resArray);
-									echo '-<br>';
-									print_r($membership);
-									die();
-									*/
-									$savedate = $model->addGroupMembership($groups[0]->id, $my->id, $resArray, $membership);
-									$mainframe->enqueueMessage('Thank you for your payment.', 'success');
-									
-									$succURL = JURI::root() . 'index.php?option=com_community&view=groups&task=mygroups&create=succ&userid=' . $my->id;
-									header("Location: ".$succURL);
-								}
-								else  
-								{
-									//Display a user friendly Error on the page using any of the following error information returned by PayPal
-									$ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
-									$ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
-									$ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
-									$ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
-									
-									echo "GetExpressCheckoutDetails API call failed. ";
-									echo "Detailed Error Message: " . $ErrorLongMsg;
-									echo "Short Error Message: " . $ErrorShortMsg;
-									echo "Error Code: " . $ErrorCode;
-									echo "Error Severity Code: " . $ErrorSeverityCode;
-								}
-								
-							}
-							else  
-							{
-								//Display a user friendly Error on the page using any of the following error information returned by PayPal
-								$ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
-								$ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
-								$ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
-								$ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
-								
-								echo "GetExpressCheckoutDetails API call failed. ";
-								echo "Detailed Error Message: " . $ErrorLongMsg;
-								echo "Short Error Message: " . $ErrorShortMsg;
-								echo "Error Code: " . $ErrorCode;
-								echo "Error Severity Code: " . $ErrorSeverityCode;
-							}
-						}
-					} 
-					else  
-					{
-						//Display a user friendly Error on the page using any of the following error information returned by PayPal
-						$ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
-						$ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
-						$ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
-						$ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
-						
-						echo "GetExpressCheckoutDetails API call failed. ";
-						echo "Detailed Error Message: " . $ErrorLongMsg;
-						echo "Short Error Message: " . $ErrorShortMsg;
-						echo "Error Code: " . $ErrorCode;
-						echo "Error Severity Code: " . $ErrorSeverityCode;
-					}	
-				}
-			} else if($step=="paycancel"){
-				$mainframe->enqueueMessage('Payment Failed', 'error');
-			}
+                    $_SESSION["Payment_Amount"] = $membership->amount;
+                    $paymentAmount = $membership->amount;
+                    $currencyCodeType = "USD";
+                    $paymentType = "Sale";
+                    //$returnURL = JURI::root() . 'index.php?option=com_community&view=groups&task=joinmembership&selstep=paysucc&groupid=' . $groupId;
+                    //$cancelURL = JURI::root() . 'index.php?option=com_community&view=groups&task=joinmembership&selstep=paycancel&groupid=' . $groupId;
+                    $returnURL = JURI::root() . 'index.php?groupid=' . $groupId;
+                    $cancelURL = JURI::root() . 'index.php?groupid=' . $groupId;
+
+                    $resArray = $this->CallShortcutExpressCheckout ($paymentAmount, $currencyCodeType, $paymentType, $returnURL, $cancelURL, $membership);
+
+                    $ack = strtoupper($resArray["ACK"]);
+                    if($ack=="SUCCESS" || $ack=="SUCCESSWITHWARNING")
+                    {
+                            $this->RedirectToPayPal ( $resArray["TOKEN"] );
+                    } 
+                    else  
+                    {
+                            //Display a user friendly Error on the page using any of the following error information returned by PayPal
+                            $ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
+                            $ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
+                            $ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
+                            $ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
+
+                            echo "SetExpressCheckout API call failed. ";
+                            echo "Detailed Error Message: " . $ErrorLongMsg;
+                            echo "Short Error Message: " . $ErrorShortMsg;
+                            echo "Error Code: " . $ErrorCode;
+                            echo "Error Severity Code: " . $ErrorSeverityCode;
+                            //die();
+                    }
+                }
+
+            } else if($step=="paysucc") {
+
+                    $token = "";
+                    if (isset($postfields['token']))
+                    {
+                            $token = $postfields['token'];
+                    }
+
+                    if ( $token != "" )
+                    {
+                            $resArray = $this->GetShippingDetails( $token, $membership);
+                            $ack = strtoupper($resArray["ACK"]);
+                            if( $ack == "SUCCESS" || $ack == "SUCESSWITHWARNING") 
+                            {
+                                    /*
+                                    ' The information that is returned by the GetExpressCheckoutDetails call should be integrated by the partner into his Order Review 
+                                    ' page		
+                                    */
+                                    $email 			= $resArray["EMAIL"]; // ' Email address of payer.
+                                    $payerId 			= $resArray["PAYERID"]; // ' Unique PayPal customer account identification number.
+                                    $payerStatus		= $resArray["PAYERSTATUS"]; // ' Status of payer. Character length and limitations: 10 single-byte alphabetic characters.
+                                    $salutation			= $resArray["SALUTATION"]; // ' Payer's salutation.
+                                    $firstName			= $resArray["FIRSTNAME"]; // ' Payer's first name.
+                                    $middleName			= $resArray["MIDDLENAME"]; // ' Payer's middle name.
+                                    $lastName			= $resArray["LASTNAME"]; // ' Payer's last name.
+                                    $suffix				= $resArray["SUFFIX"]; // ' Payer's suffix.
+                                    $cntryCode			= $resArray["COUNTRYCODE"]; // ' Payer's country of residence in the form of ISO standard 3166 two-character country codes.
+                                    $business			= $resArray["BUSINESS"]; // ' Payer's business name.
+                                    $shipToName			= $resArray["SHIPTONAME"]; // ' Person's name associated with this address.
+                                    $shipToStreet		= $resArray["SHIPTOSTREET"]; // ' First street address.
+                                    $shipToStreet2		= $resArray["SHIPTOSTREET2"]; // ' Second street address.
+                                    $shipToCity			= $resArray["SHIPTOCITY"]; // ' Name of city.
+                                    $shipToState		= $resArray["SHIPTOSTATE"]; // ' State or province
+                                    $shipToCntryCode	= $resArray["SHIPTOCOUNTRYCODE"]; // ' Country code. 
+                                    $shipToZip			= $resArray["SHIPTOZIP"]; // ' U.S. Zip code or other country-specific postal code.
+                                    $addressStatus 		= $resArray["ADDRESSSTATUS"]; // ' Status of street address on file with PayPal   
+                                    $invoiceNumber		= $resArray["INVNUM"]; // ' Your own invoice or tracking number, as set by you in the element of the same name in SetExpressCheckout request .
+                                    $phonNumber			= $resArray["PHONENUM"]; // ' Payer's contact telephone number. Note:  PayPal returns a contact telephone number only if your Merchant account profile settings require that the buyer enter one. 
+
+                                    //Confirm Recurring
+                                    $PaymentOption = "PayPal";
+                                    if ( $PaymentOption == "PayPal" )
+                                    {
+                                            /*
+                                            '------------------------------------
+                                            ' The paymentAmount is the total value of 
+                                            ' the shopping cart, that was set 
+                                            ' earlier in a session variable 
+                                            ' by the shopping cart page
+                                            '------------------------------------
+                                            */
+
+                                            $finalPaymentAmount =  $_SESSION["Payment_Amount"];
+
+                                            $resArray = $this->CreateRecurringPaymentsProfile($membership,$groups[0]->id);
+
+                                            if( $ack == "SUCCESS" || $ack == "SUCCESSWITHWARNING" )
+                                            {
+                                                    /*
+                                                    '------------------------------------
+                                                    ' Calls the DoExpressCheckoutPayment API call
+                                                    '
+                                                    ' The ConfirmPayment function is defined in the file PayPalFunctions.jsp,
+                                                    ' that is included at the top of this file.
+                                                    '-------------------------------------------------
+                                                    */
+                                                    $resArray = $this->ConfirmPayment ( $finalPaymentAmount, $membership ); //Remove comment with ontime payment.
+
+                                                    $ack = strtoupper($resArray["ACK"]);
+
+                                                    if( $ack == "SUCCESS" || $ack == "SUCCESSWITHWARNING" )
+                                                    {
+                                                            /*
+                                                            '********************************************************************************************************************
+                                                            '
+                                                            ' THE PARTNER SHOULD SAVE THE KEY TRANSACTION RELATED INFORMATION LIKE 
+                                                            '                    transactionId & orderTime 
+                                                            '  IN THEIR OWN  DATABASE
+                                                            ' AND THE REST OF THE INFORMATION CAN BE USED TO UNDERSTAND THE STATUS OF THE PAYMENT 
+                                                            '
+                                                            '********************************************************************************************************************
+                                                            */
+
+                                                            $transactionId		= $resArray["TRANSACTIONID"]; // ' Unique transaction ID of the payment. Note:  If the PaymentAction of the request was Authorization or Order, this value is your AuthorizationID for use with the Authorization & Capture APIs. 
+                                                            $transactionType 	= $resArray["TRANSACTIONTYPE"]; //' The type of transaction Possible values: l  cart l  express-checkout 
+                                                            $paymentType		= $resArray["PAYMENTTYPE"];  //' Indicates whether the payment is instant or delayed. Possible values: l  none l  echeck l  instant 
+                                                            $orderTime 			= $resArray["ORDERTIME"];  //' Time/date stamp of payment
+                                                            $amt				= $resArray["AMT"];  //' The final amount charged, including any shipping and taxes from your Merchant Profile.
+                                                            $currencyCode		= $resArray["CURRENCYCODE"];  //' A three-character currency code for one of the currencies listed in PayPay-Supported Transactional Currencies. Default: USD. 
+                                                            $feeAmt				= $resArray["FEEAMT"];  //' PayPal fee amount charged for the transaction
+                                                            $settleAmt			= $resArray["SETTLEAMT"];  //' Amount deposited in your PayPal account after a currency conversion.
+                                                            $taxAmt				= $resArray["TAXAMT"];  //' Tax charged on the transaction.
+                                                            $exchangeRate		= $resArray["EXCHANGERATE"];  //' Exchange rate if a currency conversion occurred. Relevant only if your are billing in their non-primary currency. If the customer chooses to pay with a currency other than the non-primary currency, the conversion occurs in the customer's account.
+
+                                                            /*
+                                                            ' Status of the payment: 
+                                                                            'Completed: The payment has been completed, and the funds have been added successfully to your account balance.
+                                                                            'Pending: The payment is pending. See the PendingReason element for more information. 
+                                                            */
+
+                                                            $paymentStatus	= $resArray["PAYMENTSTATUS"]; 
+
+                                                            /*
+                                                            'The reason the payment is pending:
+                                                            '  none: No pending reason 
+                                                            '  address: The payment is pending because your customer did not include a confirmed shipping address and your Payment Receiving Preferences is set such that you want to manually accept or deny each of these payments. To change your preference, go to the Preferences section of your Profile. 
+                                                            '  echeck: The payment is pending because it was made by an eCheck that has not yet cleared. 
+                                                            '  intl: The payment is pending because you hold a non-U.S. account and do not have a withdrawal mechanism. You must manually accept or deny this payment from your Account Overview. 		
+                                                            '  multi-currency: You do not have a balance in the currency sent, and you do not have your Payment Receiving Preferences set to automatically convert and accept this payment. You must manually accept or deny this payment. 
+                                                            '  verify: The payment is pending because you are not yet verified. You must verify your account before you can accept this payment. 
+                                                            '  other: The payment is pending for a reason other than those listed above. For more information, contact PayPal customer service. 
+                                                            */
+
+                                                            $pendingReason	= $resArray["PENDINGREASON"];  
+
+                                                            /*
+                                                            'The reason for a reversal if TransactionType is reversal:
+                                                            '  none: No reason code 
+                                                            '  chargeback: A reversal has occurred on this transaction due to a chargeback by your customer. 
+                                                            '  guarantee: A reversal has occurred on this transaction due to your customer triggering a money-back guarantee. 
+                                                            '  buyer-complaint: A reversal has occurred on this transaction due to a complaint about the transaction from your customer. 
+                                                            '  refund: A reversal has occurred on this transaction because you have given the customer a refund. 
+                                                            '  other: A reversal has occurred on this transaction due to a reason not listed above. 
+                                                            */
+
+                                                            $reasonCode		= $resArray["REASONCODE"]; 
+
+                                                            //echo "Thank you for your payment.";
+                                                            //die();
+                                                            //group join
+                                                            $userId=$my->id;
+                                                            $groupId=$groups[0]->id;
+                                                            $savedate = $model->addJoinGroup($groupId, $userId);
+                                                            //$this->PayGroupJoin( $groups[0] , $userId );
+                                                            //payment Save
+                                                            /*
+                                                            echo $groups[0]->id;
+                                                            echo '-<br>';
+                                                            echo $my->id;
+                                                            echo '-<br>';
+                                                            print_r($resArray);
+                                                            echo '-<br>';
+                                                            print_r($membership);
+                                                            die();
+                                                            */
+                                                            $savedate = $model->addGroupMembership($groups[0]->id, $my->id, $resArray, $membership);
+                                                            $mainframe->enqueueMessage('Thank you for your payment.', 'success');
+
+                                                            $succURL = JURI::root() . 'index.php?option=com_community&view=groups&task=mygroups&create=succ&userid=' . $my->id;
+                                                            header("Location: ".$succURL);
+                                                    }
+                                                    else  
+                                                    {
+                                                            //Display a user friendly Error on the page using any of the following error information returned by PayPal
+                                                            $ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
+                                                            $ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
+                                                            $ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
+                                                            $ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
+
+                                                            echo "GetExpressCheckoutDetails API call failed. ";
+                                                            echo "Detailed Error Message: " . $ErrorLongMsg;
+                                                            echo "Short Error Message: " . $ErrorShortMsg;
+                                                            echo "Error Code: " . $ErrorCode;
+                                                            echo "Error Severity Code: " . $ErrorSeverityCode;
+                                                    }
+
+                                            }
+                                            else  
+                                            {
+                                                    //Display a user friendly Error on the page using any of the following error information returned by PayPal
+                                                    $ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
+                                                    $ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
+                                                    $ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
+                                                    $ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
+
+                                                    echo "GetExpressCheckoutDetails API call failed. ";
+                                                    echo "Detailed Error Message: " . $ErrorLongMsg;
+                                                    echo "Short Error Message: " . $ErrorShortMsg;
+                                                    echo "Error Code: " . $ErrorCode;
+                                                    echo "Error Severity Code: " . $ErrorSeverityCode;
+                                            }
+                                    }
+                            } 
+                            else  
+                            {
+                                    //Display a user friendly Error on the page using any of the following error information returned by PayPal
+                                    $ErrorCode = urldecode($resArray["L_ERRORCODE0"]);
+                                    $ErrorShortMsg = urldecode($resArray["L_SHORTMESSAGE0"]);
+                                    $ErrorLongMsg = urldecode($resArray["L_LONGMESSAGE0"]);
+                                    $ErrorSeverityCode = urldecode($resArray["L_SEVERITYCODE0"]);
+
+                                    echo "GetExpressCheckoutDetails API call failed. ";
+                                    echo "Detailed Error Message: " . $ErrorLongMsg;
+                                    echo "Short Error Message: " . $ErrorShortMsg;
+                                    echo "Error Code: " . $ErrorCode;
+                                    echo "Error Severity Code: " . $ErrorSeverityCode;
+                            }	
+                    }
+            } else if($step=="paycancel"){
+                    $mainframe->enqueueMessage('Payment Failed', 'error');
+            }
 
             $tmpl = new CTemplate();
             echo $tmpl->set('groups', $groups) 
@@ -1963,353 +1982,353 @@ if (!class_exists("CommunityViewGroups")) {
                     ->fetch('groups.membership');
         }
 		
-		public function PayGroupJoin( $group , $userId )
-		{
-			//@rule: Clear existing invites fromt he invitation table once the user joined the group
-			$groupInvite		= JTable::getInstance( 'GroupInvite' , 'CTable' );
-			$keys = array('groupid' => $group->id , 'userid'=>$userId);
-	
-			if( $groupInvite->load($keys) )
-			{
-				$groupInvite->delete();
-			}
-	
-			$member		= JTable::getInstance( 'GroupMembers' , 'CTable' );
-			$keys = array('memberId' =>$userId , 'groupId' => $group->id);
-			$member->load( $keys );
-	
-			$groupModel	= CFactory::getModel('groups');
-			$admins = $groupModel->getAdmins($group->id, null);
-			$params		= $group->getParams();
-	
-			//@rule: Send notification when necessary
-			if($params->get('joinrequestnotification') || $params->get('newmembernotification') )
-			{
-				$user		= CFactory::getUser( $userId );
-				$subject	=  JText::sprintf( 'COM_COMMUNITY_GROUPS_EMAIL_NEW_MEMBER_JOINED_SUBJECT' , '{user}' , '{group}' );
-	
-				if( !$member->approved )
-				{
-					$subject	= JText::sprintf( 'COM_COMMUNITY_NEW_MEMBER_REQUESTED_TO_JOIN_GROUP_EMAIL_SUBJECT' , '{user}' , '{group}' );
-				}
-	
-				$params			= new CParameter( '' );
-				$params->set('url' , 'index.php?option=com_community&view=groups&task=viewgroup&groupid='.$group->id );
-				$params->set('group' , $group->name );
-				$params->set('group_url' , 'index.php?option=com_community&view=groups&task=viewgroup&groupid='.$group->id );
-				$params->set('user' , $user->getDisplayName() );
-				$params->set('user_url' , 'index.php?option=com_community&view=profile&userid='.$user->id );
-				$params->set('approved' , $member->approved );
-	
-				foreach($admins as $admin)
-				{
-					CNotificationLibrary::add( 'groups_member_join' , $user->id , $admin->id , $subject , '' , 'groups.memberjoin' , $params );
-				}
-			}
-		}
+	public function PayGroupJoin( $group , $userId )
+        {
+            //@rule: Clear existing invites fromt he invitation table once the user joined the group
+            $groupInvite		= JTable::getInstance( 'GroupInvite' , 'CTable' );
+            $keys = array('groupid' => $group->id , 'userid'=>$userId);
+
+            if( $groupInvite->load($keys) )
+            {
+                $groupInvite->delete();
+            }
+
+            $member	= JTable::getInstance( 'GroupMembers' , 'CTable' );
+            $keys = array('memberId' =>$userId , 'groupId' => $group->id);
+            $member->load( $keys );
+
+            $groupModel = CFactory::getModel('groups');
+            $admins = $groupModel->getAdmins($group->id, null);
+            $params	= $group->getParams();
+
+            //@rule: Send notification when necessary
+            if($params->get('joinrequestnotification') || $params->get('newmembernotification') )
+            {
+                $user = CFactory::getUser( $userId );
+                $subject =  JText::sprintf( 'COM_COMMUNITY_GROUPS_EMAIL_NEW_MEMBER_JOINED_SUBJECT' , '{user}' , '{group}' );
+
+                if( !$member->approved )
+                {
+                    $subject = JText::sprintf( 'COM_COMMUNITY_NEW_MEMBER_REQUESTED_TO_JOIN_GROUP_EMAIL_SUBJECT' , '{user}' , '{group}' );
+                }
+
+                $params			= new CParameter( '' );
+                $params->set('url' , 'index.php?option=com_community&view=groups&task=viewgroup&groupid='.$group->id );
+                $params->set('group' , $group->name );
+                $params->set('group_url' , 'index.php?option=com_community&view=groups&task=viewgroup&groupid='.$group->id );
+                $params->set('user' , $user->getDisplayName() );
+                $params->set('user_url' , 'index.php?option=com_community&view=profile&userid='.$user->id );
+                $params->set('approved' , $member->approved );
+
+                foreach($admins as $admin)
+                {
+                    CNotificationLibrary::add( 'groups_member_join' , $user->id , $admin->id , $subject , '' , 'groups.memberjoin' , $params );
+                }
+            }
+        }
 		
-		function ConfirmPayment( $FinalPaymentAmt, $membership )
-		{
-			/* Gather the information to make the final call to
-			   finalize the PayPal payment.  The variable nvpstr
-			   holds the name value pairs
-			   */
-			
-	
-			//Format the other parameters that were stored in the session from the previous calls	
-			$token 		= urlencode($_SESSION['TOKEN']);
-			$paymentType 		= urlencode($_SESSION['PaymentType']);
-			$currencyCodeType 	= urlencode($_SESSION['currencyCodeType']);
-			$payerID 		= urlencode($_SESSION['payer_id']);
-	
-			$serverName 		= urlencode($_SERVER['SERVER_NAME']);
-	
-			$nvpstr  = '&TOKEN=' . $token . '&PAYERID=' . $payerID . '&PAYMENTACTION=' . $paymentType . '&AMT=' . $FinalPaymentAmt;
-			$nvpstr .= '&CURRENCYCODE=' . $currencyCodeType . '&IPADDRESS=' . $serverName; 
-	
-			 /* Make the call to PayPal to finalize payment
-				If an error occured, show the resulting errors
-				*/
-			$resArray=$this->hash_call("DoExpressCheckoutPayment",$nvpstr, $membership);
-	
-			$_SESSION['billing_agreemenet_id']	= $resArray["BILLINGAGREEMENTID"];
-	
-			/* Display the API response back to the browser.
-			   If the response from PayPal was a success, display the response parameters'
-			   If the response was an error, display the errors received using APIError.php.
-			   */
-			$ack = strtoupper($resArray["ACK"]);
-	
-			return $resArray;
-		}
-		
-		function CreateRecurringPaymentsProfile($membership,$groupid)
-		{
-			//'--------------------------------------------------------------
-			//' At this point, the buyer has completed authorizing the payment
-			//' at PayPal.  The function will call PayPal to obtain the details
-			//' of the authorization, incuding any shipping information of the
-			//' buyer.  Remember, the authorization is not a completed transaction
-			//' at this state - the buyer still needs an additional step to finalize
-			//' the transaction
-			//'--------------------------------------------------------------
-			$token 		= urlencode($_SESSION['TOKEN']);
-			$email 		= urlencode($_SESSION['email']);
-			$shipToName		= urlencode($_SESSION['shipToName']);
-			$shipToStreet		= urlencode($_SESSION['shipToStreet']);
-			$shipToCity		= urlencode($_SESSION['shipToCity']);
-			$shipToState		= urlencode($_SESSION['shipToState']);
-			$shipToZip		= urlencode($_SESSION['shipToZip']);
-			$shipToCountry	= urlencode($_SESSION['shipToCountry']);
-		   
-			//'---------------------------------------------------------------------------
-			//' Build a second API request to PayPal, using the token as the
-			//'  ID to get the details on the payment authorization
-			//'---------------------------------------------------------------------------
-			$india = time(); // + (10*60*60)+(35*60);
-			$today=date("Y-n-j",$india);
-			$jd=explode('-',$today);
-			$joining_date=$jd[2].'-'.$jd[1].'-'.$jd[0];
-			$memmonth=$membership->memmonth;
-			$expmonth=date("Y-m-d", mktime(0, 0, 0, date("$jd[1]")+$memmonth, date("$jd[2]"), date("$jd[0]")));
-	
-			$nvpstr="&TOKEN=".$token;
-			#$nvpstr.="&EMAIL=".$email;
-			$nvpstr.="&SHIPTONAME=".$shipToName;
-			$nvpstr.="&SHIPTOSTREET=".$shipToStreet;
-			$nvpstr.="&SHIPTOCITY=".$shipToCity;
-			$nvpstr.="&SHIPTOSTATE=".$shipToState;
-			$nvpstr.="&SHIPTOZIP=".$shipToZip;
-			$nvpstr.="&SHIPTOCOUNTRY=".$shipToCountry;
-			$nvpstr.="&PROFILESTARTDATE=".urlencode($expmonth."T0:0:0");
-			$nvpstr.="&DESC=".urlencode("Membership Recurring Payment ($".$membership->amount.")");
-			$nvpstr.="&BILLINGPERIOD=Month";
-			$nvpstr.="&BILLINGFREQUENCY=".$membership->memmonth;
-			$nvpstr.="&AMT=".$membership->amount;
-			$nvpstr.="&CURRENCYCODE=USD";
-			$nvpstr.="&IPADDRESS=" . $_SERVER['REMOTE_ADDR'];
-			
-			//'---------------------------------------------------------------------------
-			//' Make the API call and store the results in an array.  
-			//'	If the call was a success, show the authorization details, and provide
-			//' 	an action to complete the payment.  
-			//'	If failed, show the error
-			//'---------------------------------------------------------------------------
-			//print_r($nvpstr);
-			//die();
-			$resArray=$this->hash_call("CreateRecurringPaymentsProfile",$nvpstr,$membership);
-			$ack = strtoupper($resArray["ACK"]);
-			return $resArray;
-		}
-		
-		function GetShippingDetails( $token, $membership )
-		{
-			//'--------------------------------------------------------------
-			//' At this point, the buyer has completed authorizing the payment
-			//' at PayPal.  The function will call PayPal to obtain the details
-			//' of the authorization, incuding any shipping information of the
-			//' buyer.  Remember, the authorization is not a completed transaction
-			//' at this state - the buyer still needs an additional step to finalize
-			//' the transaction
-			//'--------------------------------------------------------------
-		   
-			//'---------------------------------------------------------------------------
-			//' Build a second API request to PayPal, using the token as the
-			//'  ID to get the details on the payment authorization
-			//'---------------------------------------------------------------------------
-			$nvpstr="&TOKEN=" . $token;
-	
-			//'---------------------------------------------------------------------------
-			//' Make the API call and store the results in an array.  
-			//'	If the call was a success, show the authorization details, aGetExpressnd provide
-			//' 	an action to complete the payment.  
-			//'	If failed, show the error
-			//'---------------------------------------------------------------------------
-			$resArray=$this->hash_call("GetExpressCheckoutDetails",$nvpstr, $membership);
-			$ack = strtoupper($resArray["ACK"]);
-	
-			if($ack == "SUCCESS" || $ack=="SUCCESSWITHWARNING")
-			{	
-				$_SESSION['payer_id'] =	$resArray['PAYERID'];
-				$_SESSION['email'] =	$resArray['EMAIL'];
-				$_SESSION['firstName'] = $resArray["FIRSTNAME"]; 
-				$_SESSION['lastName'] = $resArray["LASTNAME"]; 
-				$_SESSION['shipToName'] = $resArray["SHIPTONAME"]; 
-				$_SESSION['shipToStreet'] = $resArray["SHIPTOSTREET"]; 
-				$_SESSION['shipToCity'] = $resArray["SHIPTOCITY"];
-				$_SESSION['shipToState'] = $resArray["SHIPTOSTATE"];
-				$_SESSION['shipToZip'] = $resArray["SHIPTOZIP"];
-				$_SESSION['shipToCountry'] = $resArray["SHIPTOCOUNTRYCODE"];
-			} 
-			return $resArray;
-		}
-		
-		function CallShortcutExpressCheckout( $paymentAmount, $currencyCodeType, $paymentType, $returnURL, $cancelURL, $membership) 
-		{
-			//------------------------------------------------------------------------------------------------------------------------------------
-			// Construct the parameter string that describes the SetExpressCheckout API call in the shortcut implementation
-	
-			$nvpstr="&AMT=". $paymentAmount;
-			$nvpstr = $nvpstr . "&PAYMENTACTION=" . $paymentType;
-			$nvpstr = $nvpstr . "&BILLINGAGREEMENTDESCRIPTION=".urlencode("Membership Recurring Payment ($".$membership->amount.")");
-			//$nvpstr = $nvpstr . "&BILLINGAGREEMENTDESCRIPTION=Membership";
-			//$nvpstr = $nvpstr . "&BILLINGAGREEMENTDESCRIPTION=".urlencode("Test Recurring Payment($1 monthly)");
-			$nvpstr = $nvpstr . "&BILLINGTYPE=RecurringPayments";
-			$nvpstr = $nvpstr . "&RETURNURL=" . $returnURL;
-			$nvpstr = $nvpstr . "&CANCELURL=" . $cancelURL;
-			$nvpstr = $nvpstr . "&CURRENCYCODE=" . $currencyCodeType;
-	
-			$_SESSION["currencyCodeType"] = $currencyCodeType;	  
-			$_SESSION["PaymentType"] = $paymentType;
-	
-			//'--------------------------------------------------------------------------------------------------------------- 
-			//' Make the API call to PayPal
-			//' If the API call succeded, then redirect the buyer to PayPal to begin to authorize payment.  
-			//' If an error occured, show the resulting errors
-			//'---------------------------------------------------------------------------------------------------------------
-		
-			$resArray=$this->hash_call("SetExpressCheckout", $nvpstr, $membership);
-			$ack = strtoupper($resArray["ACK"]);
-			if($ack=="SUCCESS" || $ack=="SUCCESSWITHWARNING")
-			{
-				$token = urldecode($resArray["TOKEN"]);
-				$_SESSION['TOKEN']=$token;
-			}
-	
-			return $resArray;
-		}
-		
-		function hash_call($methodName,$nvpStr, $membership)
-		{
-			//declaring of global variables
-			global $API_Endpoint, $version, $API_UserName, $API_Password, $API_Signature;
-			global $USE_PROXY, $PROXY_HOST, $PROXY_PORT;
-			global $gv_ApiErrorURL;
-			global $sBNCode;
-			global $PAYPAL_URL;
-			
-			$PROXY_HOST = '127.0.0.1';
-			$PROXY_PORT = '808';
-		
-			$SandboxFlag = true;
-		
-			//'------------------------------------
-			//' PayPal API Credentials
-			//' Replace <API_USERNAME> with your API Username
-			//' Replace <API_PASSWORD> with your API Password
-			//' Replace <API_SIGNATURE> with your Signature
-			//'------------------------------------
-			$API_UserName=$membership->apiuser;
-			$API_Password=$membership->apipassword;
-			$API_Signature=$membership->apisignature;
-		
-			// BN Code 	is only applicable for partners
-			$sBNCode = "PP-ECWizard";
-			
-			
-			/*	
-			' Define the PayPal Redirect URLs.  
-			' 	This is the URL that the buyer is first sent to do authorize payment with their paypal account
-			' 	change the URL depending if you are testing on the sandbox or the live PayPal site
-			'
-			' For the sandbox, the URL is       https://www.sandbox.paypal.com/webscr&cmd=_express-checkout&token=
-			' For the live site, the URL is        https://www.paypal.com/webscr&cmd=_express-checkout&token=
-			*/
-			
-			if ($SandboxFlag == true) 
-			{
-				$API_Endpoint = "https://api-3t.sandbox.paypal.com/nvp";
-				$PAYPAL_URL = "https://www.sandbox.paypal.com/webscr?cmd=_express-checkout&token=";
-			}
-			else
-			{
-				$API_Endpoint = "https://api-3t.paypal.com/nvp";
-				$PAYPAL_URL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token=";
-			}
-		
-			$USE_PROXY = false;
-			$version="64";
-			
-	
-			//setting the curl parameters.
-			$ch = curl_init();
-			curl_setopt($ch, CURLOPT_URL,$API_Endpoint);
-			curl_setopt($ch, CURLOPT_VERBOSE, 1);
-	
-			//turning off the server and peer verification(TrustManager Concept).
-			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
-	
-			curl_setopt($ch, CURLOPT_RETURNTRANSFER,1);
-			curl_setopt($ch, CURLOPT_POST, 1);
-			
-			//if USE_PROXY constant set to TRUE in Constants.php, then only proxy will be enabled.
-		   //Set proxy name to PROXY_HOST and port number to PROXY_PORT in constants.php 
-			if($USE_PROXY)
-				curl_setopt ($ch, CURLOPT_PROXY, $PROXY_HOST. ":" . $PROXY_PORT); 
-	
-			//NVPRequest for submitting to server
-			$nvpreq="METHOD=" . urlencode($methodName) . "&VERSION=" . urlencode($version) . "&PWD=" . urlencode($API_Password) . "&USER=" . urlencode($API_UserName) . "&SIGNATURE=" . urlencode($API_Signature) . $nvpStr . "&BUTTONSOURCE=" . urlencode($sBNCode);
-	
-			var_dump($nvpreq);
-			//setting the nvpreq as POST FIELD to curl
-			curl_setopt($ch, CURLOPT_POSTFIELDS, $nvpreq);
-	
-			//getting response from server
-			$response = curl_exec($ch);
-	
-			//convrting NVPResponse to an Associative Array
-			$nvpResArray=$this->deformatNVP($response);
-			$nvpReqArray=$this->deformatNVP($nvpreq);
-			$_SESSION['nvpReqArray']=$nvpReqArray;
-	
-			if (curl_errno($ch)) 
-			{
-				// moving to display page to display curl errors
-				  $_SESSION['curl_error_no']=curl_errno($ch) ;
-				  $_SESSION['curl_error_msg']=curl_error($ch);
-	
-				  //Execute the Error handling module to display errors. 
-			} 
-			else 
-			{
-				 //closing the curl
-				curl_close($ch);
-			}
-	
-			return $nvpResArray;
-		}
-		
-		function RedirectToPayPal ( $token )
-		{
-			global $PAYPAL_URL;
-			
-			// Redirect to paypal.com here
-			$payPalURL = $PAYPAL_URL . $token;
-			header("Location: ".$payPalURL);
-		}
-		
-		function deformatNVP($nvpstr)
-		{
-			$intial=0;
-			$nvpArray = array();
-	
-			while(strlen($nvpstr))
-			{
-				//postion of Key
-				$keypos= strpos($nvpstr,'=');
-				//position of value
-				$valuepos = strpos($nvpstr,'&') ? strpos($nvpstr,'&'): strlen($nvpstr);
-	
-				/*getting the Key and Value values and storing in a Associative Array*/
-				$keyval=substr($nvpstr,$intial,$keypos);
-				$valval=substr($nvpstr,$keypos+1,$valuepos-$keypos-1);
-				//decoding the respose
-				$nvpArray[urldecode($keyval)] =urldecode( $valval);
-				$nvpstr=substr($nvpstr,$valuepos+1,strlen($nvpstr));
-			 }
-			return $nvpArray;
-		}
+        function ConfirmPayment( $FinalPaymentAmt, $membership )
+        {
+                /* Gather the information to make the final call to
+                   finalize the PayPal payment.  The variable nvpstr
+                   holds the name value pairs
+                   */
+
+
+                //Format the other parameters that were stored in the session from the previous calls	
+                $token 		= urlencode($_SESSION['TOKEN']);
+                $paymentType 		= urlencode($_SESSION['PaymentType']);
+                $currencyCodeType 	= urlencode($_SESSION['currencyCodeType']);
+                $payerID 		= urlencode($_SESSION['payer_id']);
+
+                $serverName 		= urlencode($_SERVER['SERVER_NAME']);
+
+                $nvpstr  = '&TOKEN=' . $token . '&PAYERID=' . $payerID . '&PAYMENTACTION=' . $paymentType . '&AMT=' . $FinalPaymentAmt;
+                $nvpstr .= '&CURRENCYCODE=' . $currencyCodeType . '&IPADDRESS=' . $serverName; 
+
+                 /* Make the call to PayPal to finalize payment
+                        If an error occured, show the resulting errors
+                        */
+                $resArray=$this->hash_call("DoExpressCheckoutPayment",$nvpstr, $membership);
+
+                $_SESSION['billing_agreemenet_id']	= $resArray["BILLINGAGREEMENTID"];
+
+                /* Display the API response back to the browser.
+                   If the response from PayPal was a success, display the response parameters'
+                   If the response was an error, display the errors received using APIError.php.
+                   */
+                $ack = strtoupper($resArray["ACK"]);
+
+                return $resArray;
+        }
+
+        function CreateRecurringPaymentsProfile($membership,$groupid)
+        {
+                //'--------------------------------------------------------------
+                //' At this point, the buyer has completed authorizing the payment
+                //' at PayPal.  The function will call PayPal to obtain the details
+                //' of the authorization, incuding any shipping information of the
+                //' buyer.  Remember, the authorization is not a completed transaction
+                //' at this state - the buyer still needs an additional step to finalize
+                //' the transaction
+                //'--------------------------------------------------------------
+                $token 		= urlencode($_SESSION['TOKEN']);
+                $email 		= urlencode($_SESSION['email']);
+                $shipToName		= urlencode($_SESSION['shipToName']);
+                $shipToStreet		= urlencode($_SESSION['shipToStreet']);
+                $shipToCity		= urlencode($_SESSION['shipToCity']);
+                $shipToState		= urlencode($_SESSION['shipToState']);
+                $shipToZip		= urlencode($_SESSION['shipToZip']);
+                $shipToCountry	= urlencode($_SESSION['shipToCountry']);
+
+                //'---------------------------------------------------------------------------
+                //' Build a second API request to PayPal, using the token as the
+                //'  ID to get the details on the payment authorization
+                //'---------------------------------------------------------------------------
+                $india = time(); // + (10*60*60)+(35*60);
+                $today=date("Y-n-j",$india);
+                $jd=explode('-',$today);
+                $joining_date=$jd[2].'-'.$jd[1].'-'.$jd[0];
+                $memmonth=$membership->memmonth;
+                $expmonth=date("Y-m-d", mktime(0, 0, 0, date("$jd[1]")+$memmonth, date("$jd[2]"), date("$jd[0]")));
+
+                $nvpstr="&TOKEN=".$token;
+                #$nvpstr.="&EMAIL=".$email;
+                $nvpstr.="&SHIPTONAME=".$shipToName;
+                $nvpstr.="&SHIPTOSTREET=".$shipToStreet;
+                $nvpstr.="&SHIPTOCITY=".$shipToCity;
+                $nvpstr.="&SHIPTOSTATE=".$shipToState;
+                $nvpstr.="&SHIPTOZIP=".$shipToZip;
+                $nvpstr.="&SHIPTOCOUNTRY=".$shipToCountry;
+                $nvpstr.="&PROFILESTARTDATE=".urlencode($expmonth."T0:0:0");
+                $nvpstr.="&DESC=".urlencode("Membership Recurring Payment ($".$membership->amount.")");
+                $nvpstr.="&BILLINGPERIOD=Month";
+                $nvpstr.="&BILLINGFREQUENCY=".$membership->memmonth;
+                $nvpstr.="&AMT=".$membership->amount;
+                $nvpstr.="&CURRENCYCODE=USD";
+                $nvpstr.="&IPADDRESS=" . $_SERVER['REMOTE_ADDR'];
+
+                //'---------------------------------------------------------------------------
+                //' Make the API call and store the results in an array.  
+                //'	If the call was a success, show the authorization details, and provide
+                //' 	an action to complete the payment.  
+                //'	If failed, show the error
+                //'---------------------------------------------------------------------------
+                //print_r($nvpstr);
+                //die();
+                $resArray=$this->hash_call("CreateRecurringPaymentsProfile",$nvpstr,$membership);
+                $ack = strtoupper($resArray["ACK"]);
+                return $resArray;
+        }
+
+        function GetShippingDetails( $token, $membership )
+        {
+                //'--------------------------------------------------------------
+                //' At this point, the buyer has completed authorizing the payment
+                //' at PayPal.  The function will call PayPal to obtain the details
+                //' of the authorization, incuding any shipping information of the
+                //' buyer.  Remember, the authorization is not a completed transaction
+                //' at this state - the buyer still needs an additional step to finalize
+                //' the transaction
+                //'--------------------------------------------------------------
+
+                //'---------------------------------------------------------------------------
+                //' Build a second API request to PayPal, using the token as the
+                //'  ID to get the details on the payment authorization
+                //'---------------------------------------------------------------------------
+                $nvpstr="&TOKEN=" . $token;
+
+                //'---------------------------------------------------------------------------
+                //' Make the API call and store the results in an array.  
+                //'	If the call was a success, show the authorization details, aGetExpressnd provide
+                //' 	an action to complete the payment.  
+                //'	If failed, show the error
+                //'---------------------------------------------------------------------------
+                $resArray=$this->hash_call("GetExpressCheckoutDetails",$nvpstr, $membership);
+                $ack = strtoupper($resArray["ACK"]);
+
+                if($ack == "SUCCESS" || $ack=="SUCCESSWITHWARNING")
+                {	
+                        $_SESSION['payer_id'] =	$resArray['PAYERID'];
+                        $_SESSION['email'] =	$resArray['EMAIL'];
+                        $_SESSION['firstName'] = $resArray["FIRSTNAME"]; 
+                        $_SESSION['lastName'] = $resArray["LASTNAME"]; 
+                        $_SESSION['shipToName'] = $resArray["SHIPTONAME"]; 
+                        $_SESSION['shipToStreet'] = $resArray["SHIPTOSTREET"]; 
+                        $_SESSION['shipToCity'] = $resArray["SHIPTOCITY"];
+                        $_SESSION['shipToState'] = $resArray["SHIPTOSTATE"];
+                        $_SESSION['shipToZip'] = $resArray["SHIPTOZIP"];
+                        $_SESSION['shipToCountry'] = $resArray["SHIPTOCOUNTRYCODE"];
+                } 
+                return $resArray;
+        }
+
+        function CallShortcutExpressCheckout( $paymentAmount, $currencyCodeType, $paymentType, $returnURL, $cancelURL, $membership) 
+        {
+                //------------------------------------------------------------------------------------------------------------------------------------
+                // Construct the parameter string that describes the SetExpressCheckout API call in the shortcut implementation
+
+                $nvpstr="&AMT=". $paymentAmount;
+                $nvpstr = $nvpstr . "&PAYMENTACTION=" . $paymentType;
+                $nvpstr = $nvpstr . "&BILLINGAGREEMENTDESCRIPTION=".urlencode("Membership Recurring Payment ($".$membership->amount.")");
+                //$nvpstr = $nvpstr . "&BILLINGAGREEMENTDESCRIPTION=Membership";
+                //$nvpstr = $nvpstr . "&BILLINGAGREEMENTDESCRIPTION=".urlencode("Test Recurring Payment($1 monthly)");
+                $nvpstr = $nvpstr . "&BILLINGTYPE=RecurringPayments";
+                $nvpstr = $nvpstr . "&RETURNURL=" . $returnURL;
+                $nvpstr = $nvpstr . "&CANCELURL=" . $cancelURL;
+                $nvpstr = $nvpstr . "&CURRENCYCODE=" . $currencyCodeType;
+
+                $_SESSION["currencyCodeType"] = $currencyCodeType;	  
+                $_SESSION["PaymentType"] = $paymentType;
+
+                //'--------------------------------------------------------------------------------------------------------------- 
+                //' Make the API call to PayPal
+                //' If the API call succeded, then redirect the buyer to PayPal to begin to authorize payment.  
+                //' If an error occured, show the resulting errors
+                //'---------------------------------------------------------------------------------------------------------------
+
+                $resArray=$this->hash_call("SetExpressCheckout", $nvpstr, $membership);
+                $ack = strtoupper($resArray["ACK"]);
+                if($ack=="SUCCESS" || $ack=="SUCCESSWITHWARNING")
+                {
+                        $token = urldecode($resArray["TOKEN"]);
+                        $_SESSION['TOKEN']=$token;
+                }
+
+                return $resArray;
+        }
+
+        function hash_call($methodName,$nvpStr, $membership)
+        {
+                //declaring of global variables
+                global $API_Endpoint, $version, $API_UserName, $API_Password, $API_Signature;
+                global $USE_PROXY, $PROXY_HOST, $PROXY_PORT;
+                global $gv_ApiErrorURL;
+                global $sBNCode;
+                global $PAYPAL_URL;
+
+                $PROXY_HOST = '127.0.0.1';
+                $PROXY_PORT = '808';
+
+                $SandboxFlag = true;
+
+                //'------------------------------------
+                //' PayPal API Credentials
+                //' Replace <API_USERNAME> with your API Username
+                //' Replace <API_PASSWORD> with your API Password
+                //' Replace <API_SIGNATURE> with your Signature
+                //'------------------------------------
+                $API_UserName=$membership->apiuser;
+                $API_Password=$membership->apipassword;
+                $API_Signature=$membership->apisignature;
+
+                // BN Code 	is only applicable for partners
+                $sBNCode = "PP-ECWizard";
+
+
+                /*	
+                ' Define the PayPal Redirect URLs.  
+                ' 	This is the URL that the buyer is first sent to do authorize payment with their paypal account
+                ' 	change the URL depending if you are testing on the sandbox or the live PayPal site
+                '
+                ' For the sandbox, the URL is       https://www.sandbox.paypal.com/webscr&cmd=_express-checkout&token=
+                ' For the live site, the URL is        https://www.paypal.com/webscr&cmd=_express-checkout&token=
+                */
+
+                if ($SandboxFlag == true) 
+                {
+                        $API_Endpoint = "https://api-3t.sandbox.paypal.com/nvp";
+                        $PAYPAL_URL = "https://www.sandbox.paypal.com/webscr?cmd=_express-checkout&token=";
+                }
+                else
+                {
+                        $API_Endpoint = "https://api-3t.paypal.com/nvp";
+                        $PAYPAL_URL = "https://www.paypal.com/cgi-bin/webscr?cmd=_express-checkout&token=";
+                }
+
+                $USE_PROXY = false;
+                $version="64";
+
+
+                //setting the curl parameters.
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL,$API_Endpoint);
+                curl_setopt($ch, CURLOPT_VERBOSE, 1);
+
+                //turning off the server and peer verification(TrustManager Concept).
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
+
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER,1);
+                curl_setopt($ch, CURLOPT_POST, 1);
+
+                //if USE_PROXY constant set to TRUE in Constants.php, then only proxy will be enabled.
+           //Set proxy name to PROXY_HOST and port number to PROXY_PORT in constants.php 
+                if($USE_PROXY)
+                        curl_setopt ($ch, CURLOPT_PROXY, $PROXY_HOST. ":" . $PROXY_PORT); 
+
+                //NVPRequest for submitting to server
+                $nvpreq="METHOD=" . urlencode($methodName) . "&VERSION=" . urlencode($version) . "&PWD=" . urlencode($API_Password) . "&USER=" . urlencode($API_UserName) . "&SIGNATURE=" . urlencode($API_Signature) . $nvpStr . "&BUTTONSOURCE=" . urlencode($sBNCode);
+
+                var_dump($nvpreq);
+                //setting the nvpreq as POST FIELD to curl
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $nvpreq);
+
+                //getting response from server
+                $response = curl_exec($ch);
+
+                //convrting NVPResponse to an Associative Array
+                $nvpResArray=$this->deformatNVP($response);
+                $nvpReqArray=$this->deformatNVP($nvpreq);
+                $_SESSION['nvpReqArray']=$nvpReqArray;
+
+                if (curl_errno($ch)) 
+                {
+                        // moving to display page to display curl errors
+                          $_SESSION['curl_error_no']=curl_errno($ch) ;
+                          $_SESSION['curl_error_msg']=curl_error($ch);
+
+                          //Execute the Error handling module to display errors. 
+                } 
+                else 
+                {
+                         //closing the curl
+                        curl_close($ch);
+                }
+
+                return $nvpResArray;
+        }
+
+        function RedirectToPayPal ( $token )
+        {
+                global $PAYPAL_URL;
+
+                // Redirect to paypal.com here
+                $payPalURL = $PAYPAL_URL . $token;
+                header("Location: ".$payPalURL);
+        }
+
+        function deformatNVP($nvpstr)
+        {
+                $intial=0;
+                $nvpArray = array();
+
+                while(strlen($nvpstr))
+                {
+                        //postion of Key
+                        $keypos= strpos($nvpstr,'=');
+                        //position of value
+                        $valuepos = strpos($nvpstr,'&') ? strpos($nvpstr,'&'): strlen($nvpstr);
+
+                        /*getting the Key and Value values and storing in a Associative Array*/
+                        $keyval=substr($nvpstr,$intial,$keypos);
+                        $valval=substr($nvpstr,$keypos+1,$valuepos-$keypos-1);
+                        //decoding the respose
+                        $nvpArray[urldecode($keyval)] =urldecode( $valval);
+                        $nvpstr=substr($nvpstr,$valuepos+1,strlen($nvpstr));
+                 }
+                return $nvpArray;
+        }
 
 
         /**
